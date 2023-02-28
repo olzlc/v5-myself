@@ -447,7 +447,7 @@ def parse_opt(known=False):
     # 模型的超参数路径
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
     # 训练过程中整个数据集将被迭代多少次
-    parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
+    parser.add_argument('--epochs', type=int, default=200, help='total training epochs')
     # 一次看完多少张图片才进行权重更新，梯度下降的mini-batch
     parser.add_argument('--batch-size', type=int, default=8, help='total batch size for all GPUs, -1 for autobatch')
     # 输入图片宽高
@@ -480,7 +480,7 @@ def parse_opt(known=False):
     # 指定在训练时使用加权图像选择
     parser.add_argument('--image-weights', action='store_true', help='use weighted image selection for training')
     # cuda设备, i.e. 0 or 0,1,2,3 or cpu
-    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     # 多尺度训练，img-size +/- 50%
     parser.add_argument('--multi-scale', action='store_true', help='vary img-size +/- 50%%')
     # 单类别的训练集
