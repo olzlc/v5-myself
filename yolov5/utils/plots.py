@@ -84,18 +84,20 @@ class Annotator:
         self.lw = line_width or max(round(sum(im.shape) / 2 * 0.003), 2)  # line width
 
     def box_label(self, box, label='', color=(128, 128, 128), txt_color=(255, 255, 255)):
-        # Add one xyxy box to image with label
+        # 画出一个预测框
         if self.pil or not is_ascii(label):
             self.draw.rectangle(box, width=self.lw, outline=color)  # box
             if label:
                 w, h = self.font.getsize(label)  # text width, height (WARNING: deprecated) in 9.2.0
                 # _, _, w, h = self.font.getbbox(label)  # text width, height (New)
                 outside = box[1] - h >= 0  # label fits outside box
+                # 画框
                 self.draw.rectangle(
                     (box[0], box[1] - h if outside else box[1], box[0] + w + 1,
                      box[1] + 1 if outside else box[1] + h + 1),
                     fill=color,
                 )
+                # 画标签
                 # self.draw.text((box[0], box[1]), label, fill=txt_color, font=self.font, anchor='ls')  # for PIL>8.0
                 self.draw.text((box[0], box[1] - h if outside else box[1]), label, fill=txt_color, font=self.font)
         else:  # cv2
@@ -460,6 +462,10 @@ def imshow_cls(im, labels=None, pred=None, names=None, nmax=25, verbose=False, f
 
 def plot_evolve(evolve_csv='path/to/evolve.csv'):  # from utils.plots import *; plot_evolve()
     # Plot evolve.csv hyp evolution results
+    # 这是一个绘制超参数进化结果图的函数
+    # 函数读取一个包含超参数进化结果的csv文件，计算每一行的适应度，找出最佳适应度并在图中显示出来
+    # 对于每个超参数，函数绘制一个散点图，横坐标是超参数值，纵坐标是适应度，颜色编码用于显示值的分布情况
+    # 函数还在每个子图的标题中显示超参数的名称和最佳值。最后，函数将图形保存为PNG文件，并打印保存文件的路径
     evolve_csv = Path(evolve_csv)
     data = pd.read_csv(evolve_csv)
     keys = [x.strip() for x in data.columns]

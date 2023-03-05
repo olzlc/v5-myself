@@ -167,6 +167,7 @@ class Profile(contextlib.ContextDecorator):
         self.t = t
         self.cuda = torch.cuda.is_available()
 
+    # 进入即开始计时
     def __enter__(self):
         self.start = self.time()
         return self
@@ -419,7 +420,7 @@ def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), insta
 
 
 def check_img_size(imgsz, s=32, floor=0):
-    # Verify image size is a multiple of stride s in each dimension
+    # 验证图像大小是否为每个维度的步长倍数
     if isinstance(imgsz, int):  # integer i.e. img_size=640
         new_size = max(make_divisible(imgsz, int(s)), floor)
     else:  # list i.e. img_size=[640, 480]
@@ -504,9 +505,7 @@ def check_font(font=FONT, progress=False):
 
 
 def check_dataset(data, autodownload=True):
-    # Download, check and/or unzip dataset if not found locally
-
-    # Download (optional)
+    # 如果在本地找不到数据集，请下载（可选）、检查和/或解压缩数据集
     extract_dir = ''
     if isinstance(data, (str, Path)) and (is_zipfile(data) or is_tarfile(data)):
         download(data, dir=f'{DATASETS_DIR}/{Path(data).stem}', unzip=True, delete=False, curl=False, threads=1)
@@ -672,7 +671,7 @@ def download(url, dir='.', unzip=True, delete=True, curl=False, threads=1, retry
 
 
 def make_divisible(x, divisor):
-    # Returns nearest x divisible by divisor
+    # 返回可被除数整除的最近x
     if isinstance(divisor, torch.Tensor):
         divisor = int(divisor.max())  # to int
     return math.ceil(x / divisor) * divisor
@@ -718,7 +717,7 @@ def colorstr(*input):
 
 
 def labels_to_class_weights(labels, nc=80):
-    # Get class weights (inverse frequency) from training labels
+    # 计算训练标签中的类别权重，以便在训练过程中进行加权
     if labels[0] is None:  # no labels loaded
         return torch.Tensor()
 
@@ -730,6 +729,8 @@ def labels_to_class_weights(labels, nc=80):
     # gpi = ((320 / 32 * np.array([1, 2, 4])) ** 2 * 3).sum()  # gridpoints per image
     # weights = np.hstack([gpi * len(labels)  - weights.sum() * 9, weights * 9]) ** 0.5  # prepend gridpoints to start
 
+    # 将所有训练标签中每个类别出现的次数计算出来，然后将该类别的权重设置为总样本数除以该类别出现的次数。
+    # 如果某个类别在训练集中未出现，则将该类别的权重设置为1。最后对所有类别的权重进行归一化处理
     weights[weights == 0] = 1  # replace empty bins with 1
     weights = 1 / weights  # number of targets per class
     weights /= weights.sum()  # normalize
@@ -833,8 +834,9 @@ def resample_segments(segments, n=1000):
 
 
 def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None):
-    # Rescale boxes (xyxy) from img1_shape to img0_shape
-    if ratio_pad is None:  # calculate from img0_shape
+    # 将经过缩放的图像中的边界框坐标缩放到原始图像的大小
+    # 计算原始图像与缩放后的图像之间的比例 gain，以及在宽度和高度上需要填充多少像素 pad
+    if ratio_pad is None:
         gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
         pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
     else:
@@ -844,6 +846,7 @@ def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None):
     boxes[..., [0, 2]] -= pad[0]  # x padding
     boxes[..., [1, 3]] -= pad[1]  # y padding
     boxes[..., :4] /= gain
+    # 函数会对边界框进行截断，以确保它们不会超出原始图像的边界
     clip_boxes(boxes, img0_shape)
     return boxes
 
@@ -901,7 +904,7 @@ def non_max_suppression(
         nm=0,  # number of masks
 ):
     """Non-Maximum Suppression (NMS) on inference results to reject overlapping detections
-
+    用于对对象检测推断结果执行非最大抑制（NMS）以过滤掉重叠的边界框，仅保持图像中每个对象的最高得分检测
     Returns:
          list of detections, on (n,6) tensor per image [xyxy, conf, cls]
     """
@@ -909,35 +912,39 @@ def non_max_suppression(
     # Checks
     assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
     assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
+    # 判断输出结果是否为 list 或 tuple 类型，如果是则选择第一个元素作为预测输出结果（通常情况下第一个元素为模型推理输出结果，第二个元素为模型损失函数计算结果）
     if isinstance(prediction, (list, tuple)):  # YOLOv5 model in validation model, output = (inference_out, loss_out)
         prediction = prediction[0]  # select only inference output
 
+    # 获取输出结果所在的设备（通常为 GPU），并检查是否为 Apple MPS（一种硬件加速技术），如果是则需要先将输出结果转移到 CPU 上进行后续处理
     device = prediction.device
     mps = 'mps' in device.type  # Apple MPS
     if mps:  # MPS not fully supported yet, convert tensors to CPU before NMS
         prediction = prediction.cpu()
+    # 获取输出结果的批次大小和检测出的物体类别数量（不包括背景类别）
     bs = prediction.shape[0]  # batch size
     nc = prediction.shape[2] - nm - 5  # number of classes
-    xc = prediction[..., 4] > conf_thres  # candidates
+    xc = prediction[..., 4] > conf_thres  # 从输出结果中选取置信度大于设定阈值的目标作为候选目标。其中 prediction[..., 4] 表示选取输出结果中置信度的那一列
 
     # Settings
     # min_wh = 2  # (pixels) minimum box width and height
-    max_wh = 7680  # (pixels) maximum box width and height
-    max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
-    time_limit = 0.5 + 0.05 * bs  # seconds to quit after
-    redundant = True  # require redundant detections
-    multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
-    merge = False  # use merge-NMS
+    max_wh = 7680  # 检测框的最大宽度和高度，以像素为单位，超过这个限制的框将被丢弃
+    max_nms = 30000  # 进入 torchvision.ops.nms() 的最大框数。nms 是一种在重叠的检测框之间进行筛选的技术，限制了进入这个函数的框的数量
+    time_limit = 0.5 + 0.05 * bs  # 算法的最长运行时间，单位是秒，超过这个时间将会停止运行。这个时间是根据图像的数量来计算的，每增加一个图像，算法运行的时间增加 0.05 秒
+    redundant = True  # 要求检测结果是冗余的，即多个检测框可能重叠，但算法将保留它们
+    multi_label &= nc > 1  # 多标签检测，允许每个框有多个标签，但会增加运行时间
+    merge = False  # 是否使用 merge-NMS，这是一种优化的 nms 算法，可以合并预选框，减少重复同时增大预测框大小
 
     t = time.time()
-    mi = 5 + nc  # mask start index
+    mi = 5 + nc  # mask的起始索引位置
+    # 长度为bs的列表，每个元素是一个形状为(0, 6+nm)的张量，其中6+nm表示每个检测框的信息，包括x、y、w、h、置信度、类别信息以及可能的mask信息，0表示还没有检测到任何目标
     output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
-        # Apply constraints
+        # 应用一些限制条件
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
         x = x[xc[xi]]  # confidence
 
-        # Cat apriori labels if autolabelling
+        # 如果自动标注被使用，则将自动标注的类别信息与预测结果拼接在一起
         if labels and len(labels[xi]):
             lb = labels[xi]
             v = torch.zeros((len(lb), nc + nm + 5), device=x.device)
@@ -950,14 +957,15 @@ def non_max_suppression(
         if not x.shape[0]:
             continue
 
-        # Compute conf
+        # 计算每个预测框的置信度
         x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
 
         # Box/Mask
-        box = xywh2xyxy(x[:, :4])  # center_x, center_y, width, height) to (x1, y1, x2, y2)
-        mask = x[:, mi:]  # zero columns if no masks
+        box = xywh2xyxy(x[:, :4])  # 将bounding box从中心坐标和宽度高度格式(xywh)转化为左上右下坐标格式(xyxy)
+        mask = x[:, mi:]  # 如果存在mask预测，将其提取出来
 
         # Detections matrix nx6 (xyxy, conf, cls)
+        # 根据是否多标签的情况，选取置信度高的框，或者选取每个类别中置信度最高的框
         if multi_label:
             i, j = (x[:, 5:mi] > conf_thres).nonzero(as_tuple=False).T
             x = torch.cat((box[i], x[i, 5 + j, None], j[:, None].float(), mask[i]), 1)
@@ -965,7 +973,7 @@ def non_max_suppression(
             conf, j = x[:, 5:mi].max(1, keepdim=True)
             x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
 
-        # Filter by class
+        # 根据指定的类别，对筛选后的结果进行进一步筛选
         if classes is not None:
             x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
 
@@ -977,14 +985,15 @@ def non_max_suppression(
         n = x.shape[0]  # number of boxes
         if not n:  # no boxes
             continue
-        x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence and remove excess boxes
+        x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # 将筛选后的结果按照置信度排序，选取置信度最高的框
 
         # Batched NMS
+        # 去除重叠度高的框
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
         i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
         i = i[:max_det]  # limit detections
-        if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
+        if merge and (1 < n < 3E3):  # 如果开启了框的合并功能，当框的数量较少时(1< n <3E3)，将重叠度高的框进行合并，最后输出筛选后的预测结果
             # update boxes as boxes(i,4) = weights(i,n) * boxes(n,4)
             iou = box_iou(boxes[i], boxes) > iou_thres  # iou matrix
             weights = iou * scores[None]  # box weights
@@ -995,6 +1004,7 @@ def non_max_suppression(
         output[xi] = x[i]
         if mps:
             output[xi] = output[xi].to(device)
+        # 如果超时时间超过了设定的阈值，则会给出警告信息并停止运行
         if (time.time() - t) > time_limit:
             LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
             break  # time limit exceeded

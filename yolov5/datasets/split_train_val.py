@@ -11,8 +11,8 @@ parser.add_argument('--xml_path', default='./annotations', type=str, help='input
 parser.add_argument('--txt_path', default='./imagesets/main', type=str, help='output txt label path')
 opt = parser.parse_args()
 
-trainval_percent = 0.9
-train_percent = 0.9
+trainval_percent = 0.8
+train_percent = 0.8
 xmlfilepath = opt.xml_path
 txtsavepath = opt.txt_path
 total_xml = os.listdir(xmlfilepath)

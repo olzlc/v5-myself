@@ -589,7 +589,9 @@ class DetectMultiBackend(nn.Module):
         return torch.from_numpy(x).to(self.device) if isinstance(x, np.ndarray) else x
 
     def warmup(self, imgsz=(1, 3, 640, 640)):
-        # Warmup model by running inference once
+        # 模型预热
+        # 为了在训练和推理开始之前，对模型进行一些操作，以便加速模型在实际训练和推理时的运行速度
+        # 首先会判断模型的类型，然后根据模型类型创建一个具有指定大小和数据类型的输入张量im。然后通过多次调用模型的forward方法来预热模型，使得模型的参数和缓存被加载到设备的内存中，从而减少后续运行时的启动延迟
         warmup_types = self.pt, self.jit, self.onnx, self.engine, self.saved_model, self.pb, self.triton
         if any(warmup_types) and (self.device.type != 'cpu' or self.triton):
             im = torch.empty(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)  # input

@@ -37,7 +37,7 @@ from pathlib import Path
 import torch
 
 # 获取当前模块的绝对路径，__file__是一个特殊变量，它表示当前模块的文件名
-FILE = Path(__file__).resolve()
+FILE = Path(__file__).resolve()  # 这个文件绝对路径
 # 获取了当前模块所在的目录的父目录，即YOLOv5的根目录
 ROOT = FILE.parents[0]
 # 判断YOLOv5的根目录是否已经在Python模块搜索路径中
@@ -106,6 +106,7 @@ def run(
 
     # Load model
     device = select_device(device)
+    # 判断后端框架
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
@@ -119,27 +120,31 @@ def run(
     elif screenshot:
         dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
     else:
+        # 加载图片，将图片抓取
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
     vid_path, vid_writer = [None] * bs, [None] * bs
 
-    # Run inference
+    # 推理
+    # 随便一张图片热身，以便后续减少延迟
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
-    seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
+    seen, windows, dt = 0, [], (Profile(), Profile(), Profile())  # dt为时间长度
     for path, im, im0s, vid_cap, s in dataset:
         with dt[0]:
+            # 转为pytorch格式的数组
             im = torch.from_numpy(im).to(model.device)
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
-            im /= 255  # 0 - 255 to 0.0 - 1.0
+            im /= 255  # 0 - 255 to 0.0 - 1.0 归一化
             if len(im.shape) == 3:
-                im = im[None]  # expand for batch dim
+                im = im[None]  # 扩展一下batch维度，在推理时，模型需要以批处理的形式处理输入数据，因此需要在第一维添加一个维度来表示批大小，x = x[None, :]  # 这里：可以省略，默认在前面扩展
 
         # Inference
         with dt[1]:
-            visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-            pred = model(im, augment=augment, visualize=visualize)
+            visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False  # 是否输出可视化模型中间特征图（feature map）
+            pred = model(im, augment=augment, visualize=visualize)  # augment是否做数据增强
 
         # NMS
         with dt[2]:
+            # 过滤重复部分
             pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
         # Second-stage classifier (optional)
@@ -158,21 +163,22 @@ def run(
             save_path = str(save_dir / p.name)  # im.jpg
             txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
             s += '%gx%g ' % im.shape[2:]  # print string
-            gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # normalization gain whwh
-            imc = im0.copy() if save_crop else im0  # for save_crop
-            annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]  # 获取图像的尺寸信息，并将其赋值给gn变量，用于之后的归一化处理
+            imc = im0.copy() if save_crop else im0  # 是否将预测框裁剪下来保存
+            annotator = Annotator(im0, line_width=line_thickness, example=str(names))  # 使用Annotator类对图像进行可视化处理，并传入相关参数，例如图像、线条宽度和名称等
+            # 如果有框就把框画出来
             if len(det):
-                # Rescale boxes from img_size to im0 size
+                # 由于放缩到640*640，需要将预测框坐标映射会原图
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
 
                 # Print results
                 for c in det[:, 5].unique():
-                    n = (det[:, 5] == c).sum()  # detections per class
+                    n = (det[:, 5] == c).sum()  # 统计每个类别预测框
                     s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
 
-                # Write results
+                # 保存结果
                 for *xyxy, conf, cls in reversed(det):
-                    if save_txt:  # Write to file
+                    if save_txt:  # 将框信息保存到txt
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
                         with open(f'{txt_path}.txt', 'a') as f:
@@ -182,11 +188,13 @@ def run(
                         c = int(cls)  # integer class
                         label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
                         annotator.box_label(xyxy, label, color=colors(c, True))
+                    # 是否保存截下来的框
                     if save_crop:
                         save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
             # Stream results
             im0 = annotator.result()
+            # 是否将图片显示一下
             if view_img:
                 if platform.system() == 'Linux' and p not in windows:
                     windows.append(p)
@@ -195,11 +203,13 @@ def run(
                 cv2.imshow(str(p), im0)
                 cv2.waitKey(1)  # 1 millisecond
 
-            # Save results (image with detections)
+            # 保存预测结果图片
             if save_img:
                 if dataset.mode == 'image':
+                    # 保存图片
                     cv2.imwrite(save_path, im0)
                 else:  # 'video' or 'stream'
+                    # 保存视频或视频流
                     if vid_path[i] != save_path:  # new video
                         vid_path[i] = save_path
                         if isinstance(vid_writer[i], cv2.VideoWriter):
@@ -217,7 +227,7 @@ def run(
         # Print time (inference-only)
         LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}{dt[1].dt * 1E3:.1f}ms")
 
-    # Print results
+    # 打印结果
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
     LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {(1, 3, *imgsz)}' % t)
     if save_txt or save_img:
@@ -240,9 +250,11 @@ def parse_opt():
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
     # 置信度阈值
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
-    # 做nms的iou阈值
+    # 做nms的iou阈值,nms算法：每轮选取置信度最大的 Bounding Box（简称 BBox） 接着关注所有剩下的 BBox 中与选取的 BBox 有着高重叠（IoU）的
+    # 设置iou阈值理解为预测框和真实框的交并比，适当取该值，淘汰多个框选交叠面积较大的框，选择最大置信度输出
+    # 0表明不允许任何交叠，1表明允许全部交叠，中间各值表明大于重叠面积比例淘汰
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
-    # 每个图像的最大检测数
+    # 每个图像的最大检测数量
     parser.add_argument('--max-det', type=int, default=1000, help='maximum detections per image')
     # cuda数量
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
@@ -250,21 +262,23 @@ def parse_opt():
     parser.add_argument('--view-img', action='store_true', help='show results')
     # 是否保存结果到txt
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
-    # 是否将置信度保存到txt
+    # 是否将置信度保存到txt，单独不报错无效果，需要与save-txt一起加上
     parser.add_argument('--save-conf', action='store_true', help='save confidences in --save-txt labels')
     # 是否将模型预测出来的目标框对应的图像区域（也就是目标的裁剪图像）保存到本地磁盘上
     parser.add_argument('--save-crop', action='store_true', help='save cropped prediction boxes')
     # 是否不保存图片或视频
     parser.add_argument('--nosave', action='store_true', help='do not save images/videos')
-    # --classes选项和目标类别的数字编号来指定需要保留哪些类别的目标。
+    # --classes选项和目标类别的数字编号来指定需要保留哪些类别的目标。可以多个目标
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --classes 0, or --classes 0 2 3')
     # 是否使用class-agnostic NMS（非类别感知的非极大值抑制），即在进行非极大值抑制时，忽略目标的类别信息。如果指定了该选项，目标的类别信息将不会用于抑制同类别目标之间的重叠区域。如果未指定该选项，则在进行非极大值抑制时，同类别目标之间的重叠区域将被抑制。
+    # 跨类别nms，比如待检测图像中有一个长得很像排球的足球，pt文件的分类中有足球和排球两种，那在识别时这个足球可能会被同时框上2个框：一个是足球，一个是排球。开启agnostic-nms后，那只会框出一个框
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     # 表示是否进行数据增强后再进行推理。如果指定了该选项，模型会在测试图像上进行多次增强操作，以获得更好的检测效果。如果未指定该选项，则模型将直接在测试图像上进行推理，不进行数据增强
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     # 表示是否可视化模型中间特征图（feature map）。如果指定了该选项，模型将在推理过程中，将中间特征图可视化输出，以便于分析模型的特征提取能力。如果未指定该选项，则模型不会输出中间特征图。
     parser.add_argument('--visualize', action='store_true', help='visualize features')
     # 表示是否更新所有模型。如果指定了该选项，模型将下载并更新最新的所有模型文件。如果未指定该选项，则模型不会更新模型文件，而是使用已经下载好的模型文件进行推理。
+    # 指定这个参数，则对所有模型进行strip_optimizer操作，去除pt文件中的优化器等信息
     parser.add_argument('--update', action='store_true', help='update all models')
     # 用于指定保存检测结果的项目名称和目录，其默认值为ROOT / 'runs/detect'，其中ROOT表示YOLOv5根目录。
     parser.add_argument('--project', default=ROOT / 'runs/detect', help='save results to project/name')
@@ -279,6 +293,8 @@ def parse_opt():
     # 用于控制是否隐藏目标检测结果中的置信度信息，其默认值为False，表示显示置信度信息。如果指定了该选项，则在可视化检测结果时，不显示目标的置信度信息。
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     # 用于指定是否使用FP16半精度浮点数进行推断。如果指定了该选项，则表示使用FP16半精度浮点数进行推断；否则，使用FP32单精度浮点数进行推断。使用FP16可以加速推断过程，但可能会影响检测精度。
+    # 低精度技术 (high speed reduced precision)。在training阶段，梯度的更新往往是很微小的，需要相对较高的精度，一般要用到FP32以上。
+    # 在inference的时候，精度要求没有那么高，一般F16（半精度）就可以，甚至可以用INT8（8位整型），精度影响不会很大。同时低精度的模型占用空间更小了，有利于部署在嵌入式模型里面
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     # 用于指定是否使用OpenCV DNN进行ONNX推断。如果指定了该选项，则使用OpenCV DNN进行推断；否则，使用PyTorch进行推断。使用OpenCV DNN可能会加速推断过程，但可能会影响检测精度。
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
@@ -301,7 +317,7 @@ def main(option):
     # 调用0，表示有一张显卡
     # run(ROOT / 'yolov5m.pt', ROOT / 'data/images', ROOT / 'data/coco128.yaml', (640, 640), 0.25, 0.45, 1000, '0')
     # 训练后结果
-    run(ROOT / 'runs/train/exp9/weights/best.pt', ROOT / 'data/images', ROOT / 'data/fire-smoke.yaml', (640, 640), 0.25, 0.45, 1000, '0')
+    run(ROOT / 'weights/after_train_fire/best.pt', ROOT / 'data/images', ROOT / 'data/fire-smoke.yaml', (640, 640), 0.25, 0.45, 1000, '0')
 
 if __name__ == "__main__":
     # print(torch.cuda.is_available())  # true 查看GPU是否可用

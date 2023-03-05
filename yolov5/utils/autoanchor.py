@@ -28,7 +28,7 @@ def check_anchor_order(m):
 
 @TryExcept(f'{PREFIX}ERROR')
 def check_anchors(dataset, model, thr=4.0, imgsz=640):
-    # Check anchor fit to data, recompute if necessary
+    # 使用 AutoAnchor 技术进行 anchor 聚类，并在聚类结果与数据集的匹配程度低于阈值时重新计算 anchor
     m = model.module.model[-1] if hasattr(model, 'module') else model.model[-1]  # Detect()
     shapes = imgsz * dataset.shapes / dataset.shapes.max(1, keepdims=True)
     scale = np.random.uniform(0.9, 1.1, size=(shapes.shape[0], 1))  # augment scale
@@ -45,10 +45,12 @@ def check_anchors(dataset, model, thr=4.0, imgsz=640):
     stride = m.stride.to(m.anchors.device).view(-1, 1, 1)  # model strides
     anchors = m.anchors.clone() * stride  # current anchors
     bpr, aat = metric(anchors.cpu().view(-1, 2))
+    # 使用当前模型的 anchors 进行 metric 计算，得到最佳可能召回率 BPR 和 anchors 阈值（即 anchor 与目标的匹配程度）
     s = f'\n{PREFIX}{aat:.2f} anchors/target, {bpr:.3f} Best Possible Recall (BPR). '
     if bpr > 0.98:  # threshold to recompute
         LOGGER.info(f'{s}Current anchors are a good fit to dataset ✅')
     else:
+        # 使用 k-means 聚类算法重新计算 anchors，并将聚类结果替换原始 anchors
         LOGGER.info(f'{s}Anchors are a poor fit to dataset ⚠️, attempting to improve...')
         na = m.anchors.numel() // 2  # number of anchors
         anchors = kmean_anchors(dataset, n=na, img_size=imgsz, thr=thr, gen=1000, verbose=False)

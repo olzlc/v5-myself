@@ -114,7 +114,7 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
     if isinstance(new_shape, int):
         new_shape = (new_shape, new_shape)
 
-    # Scale ratio (new / old)
+    # 缩放比例
     r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
     if not scaleup:  # only scale down, do not scale up (for better val mAP)
         r = min(r, 1.0)
@@ -123,7 +123,7 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
     ratio = r, r  # width, height ratios
     new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
     dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
-    if auto:  # minimum rectangle
+    if auto:  # 最小矩形，不一定要640，只要是步长stride步数都可以
         dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
     elif scaleFill:  # stretch
         dw, dh = 0.0, 0.0

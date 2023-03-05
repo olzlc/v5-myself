@@ -166,39 +166,46 @@ class DetectionModel(BaseModel):
     # YOLOv5 detection model
     def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
         super().__init__()
+        # 加载配置文件
         if isinstance(cfg, dict):
             self.yaml = cfg  # model dict
         else:  # is *.yaml
             import yaml  # for torch hub
             self.yaml_file = Path(cfg).name
             with open(cfg, encoding='ascii', errors='ignore') as f:
-                self.yaml = yaml.safe_load(f)  # model dict
+                self.yaml = yaml.safe_load(f)  # 模型字典
 
-        # Define model
-        ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
+        # 定义模型
+        ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # 输入通道，在字典中加入ch这个键值对
         if nc and nc != self.yaml['nc']:
             LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
-            self.yaml['nc'] = nc  # override yaml value
+            self.yaml['nc'] = nc  # 覆盖旧值
         if anchors:
             LOGGER.info(f'Overriding model.yaml anchors with anchors={anchors}')
-            self.yaml['anchors'] = round(anchors)  # override yaml value
+            self.yaml['anchors'] = round(anchors)  # 覆盖旧值
+        # 搭建网络
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
         self.inplace = self.yaml.get('inplace', True)
 
         # Build strides, anchors
-        m = self.model[-1]  # Detect()
+        m = self.model[-1]  # Detect()，取出最后一层预测层
         if isinstance(m, (Detect, Segment)):
             s = 256  # 2x min stride
             m.inplace = self.inplace
+            # 通过计算前向传播得到不同尺度下的步长stride和锚框anchors，并将其存储在self.stride和m.anchors属性中
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
+            # 模型并不知道步长，因此通过一次前馈传播推测出每层步长
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+            # 检测高低层的描框传入数据时候正确，不能用于大目标的传到低目标中
             check_anchor_order(m)
+            # 训练时每层图片不再是一开始规格，因此框也需要同时进行缩小
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
+            # 还会调用_initialize_biases()函数，对Detect层中的偏置进行初始化操作
             self._initialize_biases()  # only run once
 
-        # Init weights, biases
+        # 对模型中的权重进行初始化，并打印模型的相关信息和每一层的参数数量
         initialize_weights(self)
         self.info()
         LOGGER.info('')
@@ -299,60 +306,86 @@ class ClassificationModel(BaseModel):
 def parse_model(d, ch):  # model_dict, input_channels(3)
     # Parse a YOLOv5 model.yaml dictionary
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
+    # 取出键值并赋值
+    # anchors表示锚框的尺寸，nc表示类别数，gd和gw分别表示深度和宽度的缩放倍数，act表示激活函数
     anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
-    na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors  # number of anchors
+    # 如果anchors是列表类型，则na等于列表中第一个元素的长度除以2，否则na等于anchors的值
+    # 框的数量，在yaml中可以看到[10,13, 16,30, 33,23]有6个值，但是每个都是表示长宽，故/2表示框数
+    na = (len(anchors[0]) // 2) if isinstance(anchors, list) else anchors
+    # no为最终输出层数量，每个层级都会有na个层级预测，nc为自己定义类别，而每个类会有自己概率值，其中5表示4+1，即框的坐标信息，而每个框会有自己置信度信息，因此即4+1
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 
+    # layers用于存储构建的神经网络层，save用于存储需要保存的层的索引，ch用于存储每一层的输出通道数
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
-    for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
-        m = eval(m) if isinstance(m, str) else m  # eval strings
+    for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from：-1, number：1, module：'Conv' 卷积层, args:[64,6,2,2]
+        m = eval(m) if isinstance(m, str) else m  # 如果是字符串经过eval推断，如果m是一个字符串类型的数据，则对m溯源，源头可以是一个类
+        # m被赋值的是一个Conv的字符串：溯源后找到了在common.py文件下定义的一个类，算是完成了一个字符串转变成类的操作
+        # 当一行代码要使用变量 x 的值时，Python 会到所有可用的名字空间去查找变量，按照如下顺序:
+        # 1）局部命名空间 - 特指当前函数或类的方法。如果函数定义了一个局部变量 x, 或一个参数 x，Python 将使用它，然后停止搜索。
+        # 2）全局命名空间 - 特指当前的模块。如果模块定义了一个名为 x 的变量，函数或类，Python 将使用它然后停止搜索。
+        # 3）内置命名空间 - 对每个模块都是全局的。作为最后的尝试，Python 将假设 x 是内置函数或变量
         for j, a in enumerate(args):
             with contextlib.suppress(NameError):
+                # 推断a类型
                 args[j] = eval(a) if isinstance(a, str) else a  # eval strings
 
+        # gd为深度倍数，并不是单纯拿yaml中backend的每个值直接放入，还要乘深度倍数
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in {
                 Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
                 BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x}:
+            # c1为输入通道，c2为输出通道
             c1, c2 = ch[f], args[0]
-            if c2 != no:  # if not output
-                c2 = make_divisible(c2 * gw, 8)
+            if c2 != no:  # 不是最终输出通道数的话
+                c2 = make_divisible(c2 * gw, 8)  # 扩大再变8倍数
 
+            # 拼接变为Conv(c1, c2, k=1, s=1, p=None, g=1, d=1, act=True)参数定义部分，方便后续继续使用
             args = [c1, c2, *args[1:]]
             if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x}:
-                args.insert(2, n)  # number of repeats
+                # C3层只有一个参数，需要插入
+                args.insert(2, n)  # 重复的数字，将n插到第二个位置
                 n = 1
         elif m is nn.BatchNorm2d:
-            args = [ch[f]]
+            args = [ch[f]]  # 只包含输入通道数(ch[f])，传入上一层的通道数
         elif m is Concat:
-            c2 = sum(ch[x] for x in f)
+            c2 = sum(ch[x] for x in f)  # 输出通道数c2就是输入通道数ch[x]的总和，其中x取自f
         # TODO: channel, gw, gd
         elif m in {Detect, Segment}:
+            # 在参数列表args的末尾添加一个列表，该列表包含了需要检测或分割的所有输入通道数
             args.append([ch[x] for x in f])
+            # 如果参数列表args的第2个元素是整数，则说明需要设置anchor数量，
+            # 此时将每个输入通道数的anchor数量设置为整数个（默认每个anchor有2个坐标值）
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
+            # 如果当前层是Segment层，则还需要将参数args[3]除以gw并向下取整，以保证输出通道数是8的倍数
             if m is Segment:
                 args[3] = make_divisible(args[3] * gw, 8)
+        # 如果是Contract或Expand类型，则需要根据上一层的通道数和当前层的压缩因子或扩张因子计算当前层的通道数
         elif m is Contract:
-            c2 = ch[f] * args[0] ** 2
+            c2 = ch[f] * args[0] ** 2  # 输出通道数c2就是输入通道数ch[f]乘以args[0]的平方
         elif m is Expand:
-            c2 = ch[f] // args[0] ** 2
+            c2 = ch[f] // args[0] ** 2  # 输出通道数c2就是输入通道数ch[f]除以args[0]的平方
         else:
-            c2 = ch[f]
+            c2 = ch[f]  # 如果当前层既不是上述几种类型中的任何一种，那么输出通道数c2就等于输入通道数ch[f]
 
+        # 对于当前层的创建，如果重复次数n大于1，则用nn.Sequential将多个相同类型的层串联起来；否则直接创建一个层
         m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
         t = str(m)[8:-2].replace('__main__.', '')  # module type
         np = sum(x.numel() for x in m_.parameters())  # number params
         m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
         LOGGER.info(f'{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}')  # print
+        # 加入一些需要保存的层到保存列表
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)
+        # 如果当前元素的索引为0，则表示这是网络的第一层，此时需要将ch清空
         if i == 0:
             ch = []
+        # 将当前层的输出通道数加入到ch中，以备下一个元素使用，上层输出通道复用成为当前层输入通道
         ch.append(c2)
+    # 返回网络结构和保存列表排序
     return nn.Sequential(*layers), sorted(save)
 
 

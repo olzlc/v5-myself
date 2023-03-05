@@ -60,7 +60,7 @@ class Callbacks:
     def run(self, hook, *args, thread=False, **kwargs):
         """
         Loop through the registered actions and fire all callbacks on main thread
-
+        作用是循环遍历已注册的回调函数，触发指定的钩子（hook），并将传入的参数作为回调函数的参数
         Args:
             hook: The name of the hook to check, defaults to all
             args: Arguments to receive from YOLOv5
@@ -70,6 +70,7 @@ class Callbacks:
 
         assert hook in self._callbacks, f"hook '{hook}' not found in callbacks {self._callbacks}"
         for logger in self._callbacks[hook]:
+            # 如果thread参数为True，则在一个守护线程中运行回调函数。否则，在当前线程中运行
             if thread:
                 threading.Thread(target=logger['callback'], args=args, kwargs=kwargs, daemon=True).start()
             else:

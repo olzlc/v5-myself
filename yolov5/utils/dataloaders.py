@@ -117,10 +117,17 @@ def create_dataloader(path,
                       prefix='',
                       shuffle=False,
                       seed=0):
+    # augment: 是否要进行数据增强  True
+    # cache: 是否cache_images False
+    # pad: 设置矩形训练的shape时进行的填充 默认0.0
+    # image_weights: 训练时是否根据图片样本真实框分布权重（好像是与数量成反比）来选择图片  默认False
+    # quad: dataloader取数据时, 是否使用collate_fn4代替collate_fn  默认False
+    # prefix: 显示信息   一个标志，多为train/val，处理标签时保存cache文件会用到
     if rect and shuffle:
         LOGGER.warning('WARNING ⚠️ --rect is incompatible with DataLoader shuffle, setting shuffle=False')
         shuffle = False
     with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
+        # 调用LoadImagesAndLabels获取数据集dataset(包括数据增强)
         dataset = LoadImagesAndLabels(
             path,
             imgsz,
@@ -137,16 +144,20 @@ def create_dataloader(path,
 
     batch_size = min(batch_size, len(dataset))
     nd = torch.cuda.device_count()  # number of CUDA devices
+    # 此处修改过不用nw，用命令行传入worker
     nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
+    # 调用分布式采样器DistributedSampler
     sampler = None if rank == -1 else distributed.DistributedSampler(dataset, shuffle=shuffle)
+    # 自定义InfiniteDataLoader 进行永久持续的采样数据
     loader = DataLoader if image_weights else InfiniteDataLoader  # only DataLoader allows for attribute updates
+    # 随机数生成器
     generator = torch.Generator()
     generator.manual_seed(6148914691236517205 + seed + RANK)
     return loader(dataset,
                   batch_size=batch_size,
                   shuffle=shuffle and sampler is None,
                   # num_workers=nw,
-                  num_workers=4,
+                  num_workers=workers,
                   sampler=sampler,
                   pin_memory=PIN_MEMORY,
                   collate_fn=LoadImagesAndLabels.collate_fn4 if quad else LoadImagesAndLabels.collate_fn,
@@ -244,7 +255,7 @@ class LoadImages:
             path = Path(path).read_text().rsplit()
         files = []
         for p in sorted(path) if isinstance(path, (list, tuple)) else [path]:
-            p = str(Path(p).resolve())
+            p = str(Path(p).resolve())  # 获得绝对路径
             if '*' in p:
                 files.extend(sorted(glob.glob(p, recursive=True)))  # glob
             elif os.path.isdir(p):
@@ -254,6 +265,7 @@ class LoadImages:
             else:
                 raise FileNotFoundError(f'{p} does not exist')
 
+        # 判断后缀在不在已有列表内
         images = [x for x in files if x.split('.')[-1].lower() in IMG_FORMATS]
         videos = [x for x in files if x.split('.')[-1].lower() in VID_FORMATS]
         ni, nv = len(images), len(videos)
@@ -274,11 +286,14 @@ class LoadImages:
         assert self.nf > 0, f'No images or videos found in {p}. ' \
                             f'Supported formats are:\nimages: {IMG_FORMATS}\nvideos: {VID_FORMATS}'
 
+    # 初始化时会执行
     def __iter__(self):
+        # 后续用来计数
         self.count = 0
         return self
 
     def __next__(self):
+        # 每次执行完一张数据，就会执行该函数
         if self.count == self.nf:
             raise StopIteration
         path = self.files[self.count]
@@ -303,7 +318,7 @@ class LoadImages:
             s = f'video {self.count + 1}/{self.nf} ({self.frame}/{self.frames}) {path}: '
 
         else:
-            # Read image
+            # 图片
             self.count += 1
             im0 = cv2.imread(path)  # BGR
             assert im0 is not None, f'Image Not Found {path}'
@@ -312,8 +327,8 @@ class LoadImages:
         if self.transforms:
             im = self.transforms(im0)  # transforms
         else:
-            im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # padded resize
-            im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
+            im = letterbox(im0, self.img_size, stride=self.stride, auto=self.auto)[0]  # 改变图片尺寸，（640,480,3）=（高，宽，通道数）
+            im = im.transpose((2, 0, 1))[::-1]  # 调换一下三者顺序，HWC to CHW, BGR to RGB
             im = np.ascontiguousarray(im)  # contiguous
 
         return path, im, im0, self.cap, s
@@ -433,7 +448,7 @@ def img2label_paths(img_paths):
 
 
 class LoadImagesAndLabels(Dataset):
-    # YOLOv5 train_loader/val_loader, loads images and labels for training and validation
+    # YOLOv5 train_loader/val_loader, 加载图片和标签给训练或验证
     cache_version = 0.6  # dataset labels *.cache version
     rand_interp_methods = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
 

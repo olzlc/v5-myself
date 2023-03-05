@@ -54,6 +54,9 @@ def smartCrossEntropyLoss(label_smoothing=0.0):
 
 def smart_DDP(model):
     # Model DDP creation with checks
+    # 使用 PyTorch 中的 DistributedDataParallel 将模型转换为分布式模型，并返回包装过的模型
+    # DistributedDataParallel (DDP) 是一种用于分布式训练的 PyTorch 内置模块。
+    # 它将模型分发到多个 GPU 上，并自动处理数据划分和梯度同步。使用 DDP 可以大大缩短模型的训练时间
     assert not check_version(torch.__version__, '1.12.0', pinned=True), \
         'torch==1.12.0 torchvision==0.13.0 DDP training is not supported due to a known issue. ' \
         'Please upgrade or downgrade torch to use DDP. See https://github.com/ultralytics/yolov5/issues/8395'
@@ -106,7 +109,7 @@ def device_count():
 
 
 def select_device(device='', batch_size=0, newline=True):
-    # device = None or 'cpu' or 0 or '0' or '0,1,2,3'
+    # device = None or 'cpu' or 0 or '0' or '0,1,2,3',选择设备
     s = f'YOLOv5 🚀 {git_describe() or file_date()} Python-{platform.python_version()} torch-{torch.__version__} '
     device = str(device).strip().lower().replace('cuda:', '').replace('none', '')  # to string, 'cuda:0' to '0'
     cpu = device == 'cpu'
@@ -168,16 +171,23 @@ def profile(input, ops, n=10, device=None):
     for x in input if isinstance(input, list) else [input]:
         x = x.to(device)
         x.requires_grad = True
+
         for m in ops if isinstance(ops, list) else [ops]:
+            #  判断变量m是否具有to()方法，如果有，则将其移动到指定设备上（device）
             m = m.to(device) if hasattr(m, 'to') else m  # device
+            # 判断变量m是否具有half()方法，并且输入x是torch.Tensor类型且数据类型为torch.float16。如果满足条件，则将m转换为半精度浮点数
             m = m.half() if hasattr(m, 'half') and isinstance(x, torch.Tensor) and x.dtype is torch.float16 else m
+            # 初始化了三个变量tf、tb和t，分别表示前向传播时间、反向传播时间和总时间
             tf, tb, t = 0, 0, [0, 0, 0]  # dt forward, backward
+            # 使用thop库中的profile()函数来计算模型的浮点运算次数。
+            # 其中inputs参数表示输入数据，verbose参数表示是否输出详细信息。由于该函数返回值为一个元组，因此取第一个元素并除以1E9乘以2得到GFLOPs
             try:
                 flops = thop.profile(m, inputs=(x,), verbose=False)[0] / 1E9 * 2  # GFLOPs
             except Exception:
                 flops = 0
 
             try:
+                # 在每次迭代中，它会记录前向和反向传播所需的时间，并计算出每个操作所需的平均时间
                 for _ in range(n):
                     t[0] = time_sync()
                     y = m(x)
@@ -191,13 +201,15 @@ def profile(input, ops, n=10, device=None):
                     tf += (t[1] - t[0]) * 1000 / n  # ms per op forward
                     tb += (t[2] - t[1]) * 1000 / n  # ms per op backward
                 mem = torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0  # (GB)
+                # 记录模型输入和输出张量的形状以及模型参数数量，并将这些信息打印出来
                 s_in, s_out = (tuple(x.shape) if isinstance(x, torch.Tensor) else 'list' for x in (x, y))  # shapes
                 p = sum(x.numel() for x in m.parameters()) if isinstance(m, nn.Module) else 0  # parameters
                 print(f'{p:12}{flops:12.4g}{mem:>14.3f}{tf:14.4g}{tb:14.4g}{str(s_in):>24s}{str(s_out):>24s}')
                 results.append([p, flops, mem, tf, tb, s_in, s_out])
             except Exception as e:
                 print(e)
-                results.append(None)
+                results.append(None)  # 将结果列表中对应位置设置为None
+            # 清空GPU缓存
             torch.cuda.empty_cache()
     return results
 
@@ -319,10 +331,14 @@ def copy_attr(a, b, include=(), exclude=()):
 
 
 def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
+    # 智能优化器，用于根据不同的参数对模型进行优化。它接收一个模型、优化器名称、学习率、动量和衰减率作为参数。
+    # 优化器被分为三个参数组：权重带衰减、权重不带衰减和偏置不带衰减
     # YOLOv5 3-param group optimizer: 0) weights with decay, 1) weights no decay, 2) biases no decay
     g = [], [], []  # optimizer parameter groups
     bn = tuple(v for k, v in nn.__dict__.items() if 'Norm' in k)  # normalization layers, i.e. BatchNorm2d()
     for v in model.modules():
+        # 支持Adam、AdamW、RMSProp和SGD四种不同的优化器偏置权重
+        # g[0]存所有卷积层权重组、，g[1]存BatchNorm2d层的权重组，g[2]存偏置组
         for p_name, p in v.named_parameters(recurse=0):
             if p_name == 'bias':  # bias (no decay)
                 g[2].append(p)
@@ -330,7 +346,7 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
                 g[1].append(p)
             else:
                 g[0].append(p)  # weight (with decay)
-
+    # 支持Adam、AdamW、RMSProp和SGD四种不同的优化器。具体选择哪一种优化器由名称参数决定
     if name == 'Adam':
         optimizer = torch.optim.Adam(g[2], lr=lr, betas=(momentum, 0.999))  # adjust beta1 to momentum
     elif name == 'AdamW':
@@ -342,6 +358,7 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
     else:
         raise NotImplementedError(f'Optimizer {name} not implemented.')
 
+    # 对卷积层g[0]进行权重衰减，其余层不用
     optimizer.add_param_group({'params': g[0], 'weight_decay': decay})  # add g0 with weight_decay
     optimizer.add_param_group({'params': g[1], 'weight_decay': 0.0})  # add g1 (BatchNorm2d weights)
     LOGGER.info(f"{colorstr('optimizer:')} {type(optimizer).__name__}(lr={lr}) with parameter groups "
@@ -363,21 +380,26 @@ def smart_hub_load(repo='ultralytics/yolov5', model='yolov5s', **kwargs):
 
 def smart_resume(ckpt, optimizer, ema=None, weights='yolov5s.pt', epochs=300, resume=True):
     # Resume training from a partially trained checkpoint
+    # 用于智能恢复模型训练的函数
     best_fitness = 0.0
     start_epoch = ckpt['epoch'] + 1
+    # 获取当前模型已经训练的轮数和最佳的fitness值，其中fitness表示模型在验证集上的表现指标
     if ckpt['optimizer'] is not None:
-        optimizer.load_state_dict(ckpt['optimizer'])  # optimizer
+        optimizer.load_state_dict(ckpt['optimizer'])  # checkpoint中保存了优化器的状态，就将其加载到当前优化器中
         best_fitness = ckpt['best_fitness']
+    # 使用EMA技术并且checkpoint中保存了EMA状态，就将其加载到当前EMA中
     if ema and ckpt.get('ema'):
         ema.ema.load_state_dict(ckpt['ema'].float().state_dict())  # EMA
         ema.updates = ckpt['updates']
     if resume:
+        # 如果resume为True且当前模型已经训练了一些轮数，就打印出从哪个轮数开始继续训练，并更新总共需要训练的轮数epochs
         assert start_epoch > 0, f'{weights} training to {epochs} epochs is finished, nothing to resume.\n' \
                                 f"Start a new training without --resume, i.e. 'python train.py --weights {weights}'"
         LOGGER.info(f'Resuming training from {weights} from epoch {start_epoch} to {epochs} total epochs')
     if epochs < start_epoch:
         LOGGER.info(f"{weights} has been trained for {ckpt['epoch']} epochs. Fine-tuning for {epochs} more epochs.")
         epochs += ckpt['epoch']  # finetune additional epochs
+    # 返回最佳的fitness值、从哪个轮数开始训练和总共需要训练的轮数epochs
     return best_fitness, start_epoch, epochs
 
 
