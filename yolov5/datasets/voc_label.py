@@ -60,6 +60,9 @@ for image_set in sets:
     image_ids = open('./imagesets/main/%s.txt' % (image_set)).read().strip().split()
     list_file = open('./%s.txt' % (image_set), 'w')
     for image_id in image_ids:
-        list_file.write(abs_path + '\images\%s.jpg\n' % (image_id))
+        if '/' in abs_path:
+            list_file.write(abs_path + '/images/%s.jpg\n' % (image_id))
+        else:
+            list_file.write(abs_path + '\images\%s.jpg\n' % (image_id))
         convert_annotation(image_id)
     list_file.close()

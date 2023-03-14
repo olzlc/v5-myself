@@ -1,0 +1,26 @@
+<annotation>
+	<folder>datasets再处理</folder>
+	<filename>0-0-1-001426.jpg</filename>
+	<path>C:\Users\23055\Desktop\dataset\0-0-1-001426.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>224</width>
+		<height>224</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>fire</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>45</xmin>
+			<ymin>48</ymin>
+			<xmax>116</xmax>
+			<ymax>184</ymax>
+		</bndbox>
+	</object>
+</annotation>

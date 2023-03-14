@@ -1,0 +1,14 @@
+<annotation>
+	<folder>dataset</folder>
+	<filename>0-0-0-000267.jpg</filename>
+	<path>C:\Users\23055\Desktop\dataset\0-0-0-000267.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>224</width>
+		<height>224</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+</annotation>

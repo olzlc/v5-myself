@@ -23,6 +23,33 @@ if platform.system() != 'Windows':
 
 from models.common import *
 from models.experimental import *
+# 注意力机制
+from models.attention.A2Attention import DoubleAttention
+from models.attention.BAM import BAMBlock
+from models.attention.CBAM import CBAMBlock
+from models.attention.CoordAttention import CoordAtt
+from models.attention.CoTAttention import CoTAttention
+from models.attention.CrissCrossAttention import CrissCrossAttention
+from models.attention.ECA import ECAAttention
+from models.attention.EffectiveSE import EffectiveSEModule
+from models.attention.GAM import GAM_Attention
+from models.attention.GC import GlobalContext
+from models.attention.GE import GatherExcite
+from models.attention.MHSA import MHSA
+from models.attention.MobileViTAttention import MobileViTAttention
+from models.attention.ParNetAttention import ParNetAttention
+from models.attention.PolarizedSelfAttention import ParallelPolarizedSelfAttention
+from models.attention.S2Attention import S2Attention
+from models.attention.SE import SEAttention
+from models.attention.SequentialSelfAttention import SequentialPolarizedSelfAttention
+from models.attention.SGE import SpatialGroupEnhance
+from models.attention.ShuffleAttention import ShuffleAttention
+from models.attention.SimAM import SimAM
+from models.attention.SK import SKAttention
+from models.attention.TripletAttention import TripletAttention
+# 可变形卷积层
+from models.update.DCNv2 import C3_DCN
+
 from utils.autoanchor import check_anchor_order
 from utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args
 from utils.plots import feature_visualization
@@ -336,7 +363,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in {
                 Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
-                BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x}:
+                BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x, C3_DCN}:
             # c1为输入通道，c2为输出通道
             c1, c2 = ch[f], args[0]
             if c2 != no:  # 不是最终输出通道数的话
@@ -344,7 +371,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
             # 拼接变为Conv(c1, c2, k=1, s=1, p=None, g=1, d=1, act=True)参数定义部分，方便后续继续使用
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x}:
+            if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x, C3_DCN}:
                 # C3层只有一个参数，需要插入
                 args.insert(2, n)  # 重复的数字，将n插到第二个位置
                 n = 1
@@ -368,6 +395,19 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] * args[0] ** 2  # 输出通道数c2就是输入通道数ch[f]乘以args[0]的平方
         elif m is Expand:
             c2 = ch[f] // args[0] ** 2  # 输出通道数c2就是输入通道数ch[f]除以args[0]的平方
+        # 加入注意力机制后修改
+        elif m in {CrissCrossAttention}:
+            c1, c2 = ch[f], args[0]
+            if c2 != no:
+                c2 = make_divisible(c2 * gw, 8)
+            args = [c1, *args[1:]]
+        # 需要参数的注意力机制
+        elif m in {DoubleAttention, BAMBlock, CBAMBlock, EffectiveSEModule, GAM_Attention, GlobalContext,
+                   GatherExcite, MHSA, MobileViTAttention, ParallelPolarizedSelfAttention, ParNetAttention,
+                   S2Attention, SEAttention, SequentialPolarizedSelfAttention, ShuffleAttention, SKAttention}:
+            args = [ch[f], *args]
+        elif m in {CoordAtt, CoTAttention, ECAAttention, SpatialGroupEnhance, SimAM, TripletAttention}:
+            c2 = ch[f]
         else:
             c2 = ch[f]  # 如果当前层既不是上述几种类型中的任何一种，那么输出通道数c2就等于输入通道数ch[f]
 
@@ -394,8 +434,10 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, default='yolov5s.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--profile', action='store_true', help='profile model speed')
-    parser.add_argument('--line-profile', action='store_true', help='profile model speed layer by layer')
+    # 是否打印模型速度
+    parser.add_argument('--profile', action='store_true', default=True, help='profile model speed')
+    # 是否打印每层速度
+    parser.add_argument('--line-profile', action='store_true', default=True, help='profile model speed layer by layer')
     parser.add_argument('--test', action='store_true', help='test all yolo*.yaml')
     opt = parser.parse_args()
     opt.cfg = check_yaml(opt.cfg)  # check YAML

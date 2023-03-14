@@ -552,7 +552,7 @@ def parse_opt(known=False):
     parser.add_argument('--sync-bn', action='store_true', help='use SyncBatchNorm, only available in DDP mode')
     # 指定数据加载器的最大工作进程数，仅在分布式数据并行（DDP）模式下有用
     # 这里经常出问题，Windows系统报错时可以设置成0
-    parser.add_argument('--workers', type=int, default=2, help='max dataloader workers (per RANK in DDP mode)')
+    parser.add_argument('--workers', type=int, default=0, help='max dataloader workers (per RANK in DDP mode)')
     # 指定保存训练结果的路径
     parser.add_argument('--project', default=ROOT / 'runs/train', help='save to project/name')
     # 重命名文件名

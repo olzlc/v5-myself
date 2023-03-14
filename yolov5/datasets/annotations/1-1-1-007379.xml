@@ -1,5 +1,5 @@
 <annotation>
-	<folder>dataset</folder>
+	<folder>datasets再处理</folder>
 	<filename>1-1-1-007379.jpg</filename>
 	<path>C:\Users\23055\Desktop\dataset\1-1-1-007379.jpg</path>
 	<source>
@@ -17,10 +17,10 @@
 		<truncated>0</truncated>
 		<difficult>0</difficult>
 		<bndbox>
-			<xmin>90</xmin>
-			<ymin>122</ymin>
-			<xmax>145</xmax>
-			<ymax>200</ymax>
+			<xmin>194</xmin>
+			<ymin>163</ymin>
+			<xmax>211</xmax>
+			<ymax>182</ymax>
 		</bndbox>
 	</object>
 	<object>
@@ -29,10 +29,22 @@
 		<truncated>1</truncated>
 		<difficult>0</difficult>
 		<bndbox>
-			<xmin>1</xmin>
-			<ymin>1</ymin>
-			<xmax>139</xmax>
-			<ymax>122</ymax>
+			<xmin>76</xmin>
+			<ymin>13</ymin>
+			<xmax>224</xmax>
+			<ymax>222</ymax>
+		</bndbox>
+	</object>
+	<object>
+		<name>fire</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>91</xmin>
+			<ymin>102</ymin>
+			<xmax>134</xmax>
+			<ymax>198</ymax>
 		</bndbox>
 	</object>
 </annotation>
