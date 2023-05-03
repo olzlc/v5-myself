@@ -322,12 +322,13 @@ def scale_img(img, ratio=1.0, same_shape=False, gs=32):  # img(16,3,256,416)
 
 
 def copy_attr(a, b, include=(), exclude=()):
-    # Copy attributes from b to a, options to only include [...] and to exclude [...]
+    # 定义函数copy_attr，用于从b复制属性到a，支持指定包含和排除哪些属性
     for k, v in b.__dict__.items():
         if (len(include) and k not in include) or k.startswith('_') or k in exclude:
-            continue
+            # 判断是否需要包含或排除该属性，如果属性名以 '_' 开头则排除，如果在排除列表中则也排除
+            continue  # 如果需要排除，则跳过该属性，继续遍历下一个属性
         else:
-            setattr(a, k, v)
+            setattr(a, k, v)  # 否则将该属性设置到a类中
 
 
 def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
@@ -427,13 +428,14 @@ class EarlyStopping:
 
 
 class ModelEMA:
-    """ Updated Exponential Moving Average (EMA) from https://github.com/rwightman/pytorch-image-models
-    Keeps a moving average of everything in the model state_dict (parameters and buffers)
+    """ 实现了一个更新的指数移动平均值（EMA）的算法，这个算法会使得模型状态字典（包括参数和缓存区）的每一个值维持一个移动的平均值
     For EMA details see https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage
     """
 
     def __init__(self, model, decay=0.9999, tau=2000, updates=0):
         # Create EMA
+        # 传入一个model，以及初始的decay、tau和updates三个超参数。在其中，构造了一个deepcopy的de_parallel函数对model做一次拷贝。
+        # 之后对这个EMD进行了一些初始化，比如说记录有多少次EMA的更新、计算权重衰减的大小以及设置requires_grad为False
         self.ema = deepcopy(de_parallel(model)).eval()  # FP32 EMA
         self.updates = updates  # number of EMA updates
         self.decay = lambda x: decay * (1 - math.exp(-x / tau))  # decay exponential ramp (to help early epochs)
@@ -441,7 +443,8 @@ class ModelEMA:
             p.requires_grad_(False)
 
     def update(self, model):
-        # Update EMA parameters
+        # 对EMD的位置进行一次更新。在其中，先将EMA更新次数加1，计算decay的值d。之后获取model的状态字典
+        # 遍历这个EMA的状态字典和model的状态字典中所有数据类型是浮点数的元素，根据指数加权平均公式进行一次更新
         self.updates += 1
         d = self.decay(self.updates)
 
@@ -453,5 +456,5 @@ class ModelEMA:
         # assert v.dtype == msd[k].dtype == torch.float32, f'{k}: EMA {v.dtype} and model {msd[k].dtype} must be FP32'
 
     def update_attr(self, model, include=(), exclude=('process_group', 'reducer')):
-        # Update EMA attributes
+        # 更新EMA的属性，包括在给定的inlcude列表中的属性和不在exclude列表中的属性。对于其中的copy_attr这个自定义方法，则是实现了属性的合并
         copy_attr(self.ema, model, include, exclude)

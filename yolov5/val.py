@@ -291,9 +291,12 @@ def run(
 
     # Print speeds
     t = tuple(x.t / seen * 1E3 for x in dt)  # speeds per image
+    total_time = sum(t)  # total inference time per image
+    fps = 1000 / total_time  # frames per second
     if not training:
         shape = (batch_size, 3, imgsz, imgsz)
         LOGGER.info(f'Speed: %.1fms pre-process, %.1fms inference, %.1fms NMS per image at shape {shape}' % t)
+        LOGGER.info(f'FPS: %.4f' % fps)
 
     # Plots
     if plots:

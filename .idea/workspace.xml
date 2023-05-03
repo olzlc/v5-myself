@@ -2,36 +2,15 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="e03e4be8-a1ef-4b5b-b7cd-8374c5a240ab" name="默认变更列表" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/other.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/v5.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/imagesets/main/test.txt" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/datasets/imagesets/main/test.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/imagesets/main/train.txt" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/datasets/imagesets/main/train.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/imagesets/main/trainval.txt" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/datasets/imagesets/main/trainval.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/imagesets/main/val.txt" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/datasets/imagesets/main/val.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/split_train_val.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/datasets/split_train_val.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/test.txt" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/datasets/test.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/train.cache" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/train.txt" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/datasets/train.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/val.cache" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/datasets/val.txt" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/datasets/val.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/yolov5/detect.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/detect.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/models/common.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/models/common.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/yolov5/models/attention/CBAM.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/models/attention/CBAM.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/yolov5/models/attention/CoordAttention.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/models/attention/CoordAttention.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/yolov5/models/yolo.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/models/yolo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/yolov5/models/yolov5s-fire.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/models/yolov5s-fire.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/yolov5/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/train.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/utils/augmentations.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/augmentations.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/utils/autoanchor.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/autoanchor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/utils/autobatch.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/autobatch.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/utils/callbacks.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/callbacks.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/utils/dataloaders.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/dataloaders.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/utils/general.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/general.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/utils/plots.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/plots.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/yolov5/utils/torch_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/torch_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/yolov5/utils/loss.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/utils/loss.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/yolov5/val.py" beforeDir="false" afterPath="$PROJECT_DIR$/yolov5/val.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -216,6 +195,8 @@
       <workItem from="1677600511659" duration="516000" />
       <workItem from="1677601069594" duration="43485000" />
       <workItem from="1677947536104" duration="50000" />
+      <workItem from="1680745523014" duration="26000" />
+      <workItem from="1682500536224" duration="59000" />
     </task>
     <servers />
   </component>

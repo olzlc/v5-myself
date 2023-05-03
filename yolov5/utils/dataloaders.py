@@ -451,7 +451,19 @@ class LoadImagesAndLabels(Dataset):
     # YOLOv5 train_loader/val_loader, 加载图片和标签给训练或验证
     cache_version = 0.6  # dataset labels *.cache version
     rand_interp_methods = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
-
+    # path: 图像和标签的路径（可以传入一个路径列表）。
+    # img_size: 加载后的图像尺寸。
+    # batch_size: 训练时用到的批大小。
+    # augment: 是否启用数据增强。
+    # hyp: 启用数据增强时使用的超参数（我猜应该是在这里指定的某个文件中存放着这些超参数，而不是像另外一些框架那样需要直接在代码中指定）。
+    # rect: 是否启用固定比例的训练方式。
+    # image_weights: 在计算整个数据集损失函数或者加载权重的时候，是否使用样本的权重意味着每张图片的权重跟其包含的object数目成反比，可以使用--image-weights来设置。
+    # cache_images: 是否将处理后的图片缓存到硬盘或者内存中，提高训练速度。默认不启用（实际上作者推荐使用disk caching）。
+    # single_cls: 数据集是否只有一个类别。
+    # stride: 分割格子的大小，它是为了产生预测结果而设定的。
+    # pad: 确保输入图片能够整除stride，便于处理。
+    # min_items: 图片标注至少应该包含多少个class（default=0）。
+    # prefix: 提示性文字，打印进度时会带上前缀。
     def __init__(self,
                  path,
                  img_size=640,
@@ -479,48 +491,58 @@ class LoadImagesAndLabels(Dataset):
 
         try:
             f = []  # image files
-            for p in path if isinstance(path, list) else [path]:
+            for p in path if isinstance(path, list) else [path]:  # 检查传入的路径参数是否为列表，否则转换为列表
                 p = Path(p)  # os-agnostic
                 if p.is_dir():  # dir
                     f += glob.glob(str(p / '**' / '*.*'), recursive=True)
+                    # glob通配符匹配文件名，返回文件名列表（包含路径）
+                    # 加上/**/是为了递归遍历子目录，*.*代表所有文件
+                    # recursive参数表示递归搜索，即对子目录及其内容进行搜索
                     # f = list(p.rglob('*.*'))  # pathlib
                 elif p.is_file():  # file
                     with open(p) as t:
-                        t = t.read().strip().splitlines()
-                        parent = str(p.parent) + os.sep
+                        t = t.read().strip().splitlines()  # 读取文件内容，并去除每行首尾的空白字符（包括换行符）后，分割成列表
+                        parent = str(p.parent) + os.sep  # 获取文件所在父目录的路径
                         f += [x.replace('./', parent, 1) if x.startswith('./') else x for x in t]  # to global path
                         # f += [p.parent / x.lstrip(os.sep) for x in t]  # to global path (pathlib)
+                        # 如果路径字符串以./开头，则替换为实际路径
+                        # 如果没有指定起始位置，则默认从0开始查找（即全部替换）
                 else:
                     raise FileNotFoundError(f'{prefix}{p} does not exist')
+            # 执行完上述循环后，f列表中存储了所有图片文件的路径（包含子目录下的文件）
             self.im_files = sorted(x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in IMG_FORMATS)
             # self.img_files = sorted([x for x in f if x.suffix[1:].lower() in IMG_FORMATS])  # pathlib
+            # 对f中的每个元素进行判断：如果该文件名的扩展名符合IMG_FORMATS中规定的格式，则将其加入self.img_files列表中。（注：忽略大小写）
             assert self.im_files, f'{prefix}No images found'
         except Exception as e:
             raise Exception(f'{prefix}Error loading data from {path}: {e}\n{HELP_URL}') from e
 
         # Check cache
-        self.label_files = img2label_paths(self.im_files)  # labels
+        self.label_files = img2label_paths(self.im_files)  # 将所有图片路径转换为对应标签的路径，返回标签路径列表
         cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
+        # 如果传入了.cache文件，则使用该文件路径；如果没有，则默认使用第一个标签文件所在目录路径，并拼接.cache作为缓存文件名
         try:
+            # 从缓存文件中读取数据，检查数据版本和哈希值是否正确
             cache, exists = np.load(cache_path, allow_pickle=True).item(), True  # load dict
-            assert cache['version'] == self.cache_version  # matches current version
-            assert cache['hash'] == get_hash(self.label_files + self.im_files)  # identical hash
+            assert cache['version'] == self.cache_version  # 匹配当前版本
+            assert cache['hash'] == get_hash(self.label_files + self.im_files)  # 校验哈希值是否匹配
         except Exception:
             cache, exists = self.cache_labels(cache_path, prefix), False  # run cache ops
 
         # Display cache
+        # 分别表示：已找到、未找到、空的、损坏的图片数和总图片数
         nf, nm, ne, nc, n = cache.pop('results')  # found, missing, empty, corrupt, total
         if exists and LOCAL_RANK in {-1, 0}:
             d = f"Scanning {cache_path}... {nf} images, {nm + ne} backgrounds, {nc} corrupt"
-            tqdm(None, desc=prefix + d, total=n, initial=n, bar_format=TQDM_BAR_FORMAT)  # display cache results
+            tqdm(None, desc=prefix + d, total=n, initial=n, bar_format=TQDM_BAR_FORMAT)  # 显示缓存扫描进度
             if cache['msgs']:
-                LOGGER.info('\n'.join(cache['msgs']))  # display warnings
+                LOGGER.info('\n'.join(cache['msgs']))  # 显示警告信息
         assert nf > 0 or not augment, f'{prefix}No labels found in {cache_path}, can not start training. {HELP_URL}'
 
         # Read cache
         [cache.pop(k) for k in ('hash', 'version', 'msgs')]  # remove items
         labels, shapes, self.segments = zip(*cache.values())
-        nl = len(np.concatenate(labels, 0))  # number of labels
+        nl = len(np.concatenate(labels, 0))  # 计算所有标签总数
         assert nl > 0 or not augment, f'{prefix}All labels empty in {cache_path}, can not start training. {HELP_URL}'
         self.labels = list(labels)
         self.shapes = np.array(shapes)

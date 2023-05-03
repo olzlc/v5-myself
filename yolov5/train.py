@@ -78,12 +78,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     callbacks.run('on_pretrain_routine_start')
 
-    # Directories
+    # 模型保存路径
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
     last, best = w / 'last.pt', w / 'best.pt'
 
-    # Hyperparameters
+    # 超参数
     if isinstance(hyp, str):
         with open(hyp, errors='ignore') as f:
             hyp = yaml.safe_load(f)  # 如果是字符串将其解析为字典类型
@@ -184,8 +184,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
     # EMA
     # 如果是主进程，即 RANK 为 -1 或 0，则创建一个 ModelEMA 类的实例对象 ema
-    # EMA)技术是一种常见的优化方法，用于平滑计算中的变化，尤其是在深度学习中，常用于模型权重更新的平滑，以减少训练过程中的抖动
-    # 在深度学习中，通常采用随机梯度下降 (SGD) 或其变体作为模型训练的优化算法。在使用这些算法进行模型训练时，模型参数会在每个批次或每个 epoch 中被更新。然而，这样的频繁更新可能会导致模型参数波动或震荡，从而影响模型的性能。
+    # EMA技术是一种常见的优化方法，用于平滑计算中的变化，尤其是在深度学习中，常用于模型权重更新的平滑，以减少训练过程中的抖动
+    # 在深度学习中，通常采用随机梯度下降 (SGD) 或其变体作为模型训练的优化算法。
+    # 在使用这些算法进行模型训练时，模型参数会在每个批次或每个 epoch 中被更新。
+    # 然而，这样的频繁更新可能会导致模型参数波动或震荡，从而影响模型的性能。
     # EMA 技术通过对模型参数的移动平均来减轻这种波动和震荡，使得模型的更新更加平滑
     # EMA 维护了一个指数加权平均 (exponentially weighted average) 的缓存，用于记录每个参数的历史变化趋势
     # 在更新模型参数时，EMA 会同时更新指数加权平均的值，以更加平滑地更新模型参数
@@ -283,9 +285,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     model.names = names
 
     # Start training
-    t0 = time.time()
-    nb = len(train_loader)  # number of batches
-    nw = max(round(hyp['warmup_epochs'] * nb), 100)  # number of warmup iterations, max(3 epochs, 100 iterations)
+    t0 = time.time()  # 记录训练起始时间
+    nb = len(train_loader)  # 获取每个epoch所需要的batch数
+    nw = max(round(hyp['warmup_epochs'] * nb), 100)  # 将前几个epoch视作预热，计算预热迭代次数，至少为100次
     # nw = min(nw, (epochs - start_epoch) / 2 * nb)  # limit warmup to < 1/2 of training
     last_opt_step = -1  # 上次更新参数计数器值
     maps = np.zeros(nc)  # mAP per class，训练过程中map值
@@ -318,11 +320,12 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
 
         mloss = torch.zeros(3, device=device)  # 初始损失值，框回归损失，类别损失和置信度损失，3种
         if RANK != -1:
-            train_loader.sampler.set_epoch(epoch)
+            train_loader.sampler.set_epoch(epoch)  # 使用sampler对象在每个epoch前随机打乱训练集元素的顺序
         pbar = enumerate(train_loader)
         # 展示训练进度
         LOGGER.info(('\n' + '%11s' * 7) % ('Epoch', 'GPU_mem', 'box_loss', 'obj_loss', 'cls_loss', 'Instances', 'Size'))
         if RANK in {-1, 0}:
+            # 用于在循环或任何迭代器中添加进度条，可以方便地显示进度条，并实时更新处理进度。
             pbar = tqdm(pbar, total=nb, bar_format=TQDM_BAR_FORMAT)  # progress bar
         optimizer.zero_grad()  # 梯度归零
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
@@ -358,6 +361,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 if opt.quad:
                     loss *= 4.
 
+            # 加入注意力机制CBAM,C3CA后加入行
+            # torch.use_deterministic_algorithms(False)
             # Backward
             scaler.scale(loss).backward()
 
@@ -500,7 +505,7 @@ def parse_opt(known=False):
     # 训练过程中整个数据集将被迭代多少次
     parser.add_argument('--epochs', type=int, default=100, help='total training epochs')
     # 一次看完多少张图片才进行权重更新，梯度下降的mini-batch
-    parser.add_argument('--batch-size', type=int, default=8, help='total batch size for all GPUs, -1 for autobatch')
+    parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs, -1 for autobatch')
     # 输入图片宽高
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     # parser.add_argument('--weights', type=str, default=ROOT / 'yolov5s.pt', help='initial weights path')

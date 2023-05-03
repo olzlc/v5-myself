@@ -9,26 +9,32 @@ import torch.nn as nn
 from utils.metrics import bbox_iou
 from utils.torch_utils import de_parallel
 
-
+# 二分类交叉熵损失函数 用于多类别多分类问题
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
     # return positive, negative label smoothing BCE targets
+    # 标签平滑操作 两个值分别代表正样本和负样本的标签取值, 目的是为了后续的的 BCE loss
     return 1.0 - 0.5 * eps, 0.5 * eps
 
 
 class BCEBlurWithLogitsLoss(nn.Module):
+    # 二元交叉熵损失函数, 减少了错失标签带来的影响
     # BCEwithLogitLoss() with reduced missing label effects.
     def __init__(self, alpha=0.05):
         super().__init__()
+        # 输入的每一个元素带入sigmoid函数之后 再同标签计算BCE loss
         self.loss_fcn = nn.BCEWithLogitsLoss(reduction='none')  # must be nn.BCEWithLogitsLoss()
         self.alpha = alpha
 
     def forward(self, pred, true):
+        # 得到了预测值和标签值的BCE loss
         loss = self.loss_fcn(pred, true)
-        pred = torch.sigmoid(pred)  # prob from logits
+        pred = torch.sigmoid(pred)  # 将预测值进行sigmoid处理 数学意义为每一位对应类别出现的概率
+        # 假定missing的标签用一行0进行补齐，则相减之后missing的样本概率不受影响，正常样本样本概率为绝对值较小的负数
         dx = pred - true  # reduce only missing label effects
         # dx = (pred - true).abs()  # reduce missing label and false label effects
         alpha_factor = 1 - torch.exp((dx - 1) / (self.alpha + 1e-4))
         loss *= alpha_factor
+        #  mean的意义对一批batch中的每一个样本得到的BCE loss, 求均值作为返回值
         return loss.mean()
 
 
@@ -37,8 +43,8 @@ class FocalLoss(nn.Module):
     def __init__(self, loss_fcn, gamma=1.5, alpha=0.25):
         super().__init__()
         self.loss_fcn = loss_fcn  # must be nn.BCEWithLogitsLoss()
-        self.gamma = gamma
-        self.alpha = alpha
+        self.gamma = gamma  # Focal loss中的gamma参数 用于削弱简单样本对loss的贡献程度
+        self.alpha = alpha  # Focal loss中的alpha参数 用于平衡正负样本个数不均衡的问题
         self.reduction = loss_fcn.reduction
         self.loss_fcn.reduction = 'none'  # required to apply FL to each element
 
@@ -48,12 +54,19 @@ class FocalLoss(nn.Module):
         # loss *= self.alpha * (1.000001 - p_t) ** self.gamma  # non-zero power for gradient stability
 
         # TF implementation https://github.com/tensorflow/addons/blob/v0.7.1/tensorflow_addons/losses/focal_loss.py
-        pred_prob = torch.sigmoid(pred)  # prob from logits
+        # 通过sigmoid函数返回得到的概率 即Focal loss 中的y'
+        pred_prob = torch.sigmoid(pred)
+        # 这里对p_t属于正样本还是负样本进行了判别，正样本对应true=1,即Focal loss中的大括号
+        # 正样本时 返回pred_prob为是正样本的概率y'，负样本时为1-y'
         p_t = true * pred_prob + (1 - true) * (1 - pred_prob)
+        # 这里同样对alpha_factor进行了属于正样本还是负样本的判别，即Focal loss中的
         alpha_factor = true * self.alpha + (1 - true) * (1 - self.alpha)
+        # 这里代表Focal loss中的指数项
+        # 正样本对应(1-y')的gamma次方 负样本度对应y'的gamma次方
         modulating_factor = (1.0 - p_t) ** self.gamma
+        # 返回最终的loss大tensor
         loss *= alpha_factor * modulating_factor
-
+        # 以下几个判断代表返回loss的均值/和/本体了
         if self.reduction == 'mean':
             return loss.mean()
         elif self.reduction == 'sum':
@@ -76,8 +89,12 @@ class QFocalLoss(nn.Module):
         loss = self.loss_fcn(pred, true)
 
         pred_prob = torch.sigmoid(pred)  # prob from logits
+        # 对alpha参数 对正负样本进行区分
         alpha_factor = true * self.alpha + (1 - true) * (1 - self.alpha)
-        modulating_factor = torch.abs(true - pred_prob) ** self.gamma
+        # 对比一下正常的Focal loss           (1.0 - p_t) ** self.gamma
+        # Focal loss对样本预先进行了正和负的区分，而QFocal loss无视这样的区分，
+        # 将pred_prob看做是样本质量 负为0 正为1 直接进行做差乘方来实现泛化
+        modulating_factor = torch.abs(true - pred_prob) ** self.gamma  # 这里的平方幂数为实验验证得来
         loss *= alpha_factor * modulating_factor
 
         if self.reduction == 'mean':
@@ -97,10 +114,13 @@ class ComputeLoss:
         h = model.hyp  # hyperparameters
 
         # Define criteria
+        # 定义评价标准 cls代表类别的BCE loss obj的BCElos为判断第i个网格中的第j个box是否负责对应的object
+        # 这里的pos_weight为对应的参数 在模型训练的yaml文件中可以调整
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
+        # 这里进行标签平滑处理 cp代表positive的标签值 cn代表negative的标签值
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
 
         # Focal loss
@@ -138,6 +158,10 @@ class ComputeLoss:
                 pxy = pxy.sigmoid() * 2 - 0.5
                 pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
+                # iou.detach()：对 iou 进行截断，使得 iou 不参与反向传播，防止梯度累积；
+                # iou.detach().clamp(0)：将 iou 中小于 0 的元素直接设为 0，防止出现负数；
+                # iou.detach().clamp(0).type(tobj.dtype)：将 iou 张量的数据类型转换成了某个指定类型 tobj 的数据类型。
+                # 这通常是为了使 iou 和 tobj 可以进行运算或者组合输出，即兼容两个不同数据类型之间的操作。
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 

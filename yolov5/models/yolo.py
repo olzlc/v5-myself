@@ -26,8 +26,8 @@ from models.experimental import *
 # 注意力机制
 from models.attention.A2Attention import DoubleAttention
 from models.attention.BAM import BAMBlock
-from models.attention.CBAM import CBAMBlock
-from models.attention.CoordAttention import CoordAtt
+from models.attention.CBAM import CBAM, C3CBAM
+from models.attention.CoordAttention import CoordAtt, C3CA
 from models.attention.CoTAttention import CoTAttention
 from models.attention.CrissCrossAttention import CrissCrossAttention
 from models.attention.ECA import ECAAttention
@@ -135,52 +135,63 @@ class Segment(Detect):
 
 class BaseModel(nn.Module):
     # YOLOv5 base model
+    # forward: 前向传播的主函数，用于单尺度推理或训练操作。
     def forward(self, x, profile=False, visualize=False):
         return self._forward_once(x, profile, visualize)  # single-scale inference, train
 
+    # _forward_once: 前向传播的辅助函数，用于执行单个网络层的运算。
     def _forward_once(self, x, profile=False, visualize=False):
-        y, dt = [], []  # outputs
+        # x为输入的特征图
+        y, dt = [], []  # y和dt，用于存储网络输出和性能分析时间
         for m in self.model:
+            # 如果当前层m不是来自上一层，则将输入x从之前的层y[m.f]获取，如果m.f是索引则取y[m.f]，否则遍历m.f中的所有元素j
+            # 如果j等于-1则赋值x，否则从y[j]中获取
+            # 这段代码实现了YOLOv5检测算法中的skip connection功能，即从较浅层通过跨连接的方式将信息传递到较深层。
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
+            # 调用_profile_one_layer()函数记录当前层的时间和性能信息。
             if profile:
                 self._profile_one_layer(m, x, dt)
-            x = m(x)  # run
+            x = m(x)  # 对输入x执行当前层的运算，更新x为运算结果
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
         return x
 
     def _profile_one_layer(self, m, x, dt):
-        c = m == self.model[-1]  # is final layer, copy input as inplace fix
+        c = m == self.model[-1]  # 如果当前层为最后一层，则设置参数"inplace=True"以避免内存泄漏。
+        # thop是pytorch自带的计算FLOPs的工具，此处除以10^9表示单位转换成GFLOPs，同时乘以2表示为反向传播的FLOPs数。
         o = thop.profile(m, inputs=(x.copy() if c else x,), verbose=False)[0] / 1E9 * 2 if thop else 0  # FLOPs
+        # 使用time_sync函数计算当前层的执行时间，取10次平均值。
         t = time_sync()
         for _ in range(10):
             m(x.copy() if c else x)
         dt.append((time_sync() - t) * 100)
+        # 在日志中记录当前层的模型类型、参数量、运算时间和FLOPs。
         if m == self.model[0]:
             LOGGER.info(f"{'time (ms)':>10s} {'GFLOPs':>10s} {'params':>10s}  module")
         LOGGER.info(f'{dt[-1]:10.2f} {o:10.2f} {m.np:10.0f}  {m.type}')
+        # 记录当前层的总运行时间。
         if c:
             LOGGER.info(f"{sum(dt):10.2f} {'-':>10s} {'-':>10s}  Total")
 
-    def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers
+    def fuse(self):  # fuse model Conv2d() + BatchNorm2d() layers，将Conv2d() 和 BatchNorm2d()层融合到一起，减少运算时间和内存占用
         LOGGER.info('Fusing layers... ')
         for m in self.model.modules():
             if isinstance(m, (Conv, DWConv)) and hasattr(m, 'bn'):
-                m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
-                delattr(m, 'bn')  # remove batchnorm
-                m.forward = m.forward_fuse  # update forward
+                m.conv = fuse_conv_and_bn(m.conv, m.bn)  # 将batchnorm参数融入卷积核当中
+                delattr(m, 'bn')  # 移除batchnorm层
+                m.forward = m.forward_fuse  # 使用fuse的forward函数来替代原来的forward函数
         self.info()
         return self
 
-    def info(self, verbose=False, img_size=640):  # print model information
+    def info(self, verbose=False, img_size=640):  # 打印模型参数
         model_info(self, verbose, img_size)
 
     def _apply(self, fn):
-        # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
+        # 在model对象中对非参数或注册缓存项执行to(), cpu(), cuda(), half()等操作。
         self = super()._apply(fn)
-        m = self.model[-1]  # Detect()
+        m = self.model[-1]  # 获取最后一层的模型类型（可能为Detect或Segment）
         if isinstance(m, (Detect, Segment)):
             m.stride = fn(m.stride)
             m.grid = list(map(fn, m.grid))
@@ -191,6 +202,7 @@ class BaseModel(nn.Module):
 
 class DetectionModel(BaseModel):
     # YOLOv5 detection model
+    # cfg表示模型的配置文件路径；ch表示输入图片的通道数，默认为RGB三通道；nc表示数据集中目标类别的数量；anchors表示锚框的数量
     def __init__(self, cfg='yolov5s.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
         super().__init__()
         # 加载配置文件
@@ -237,6 +249,9 @@ class DetectionModel(BaseModel):
         self.info()
         LOGGER.info('')
 
+    # 输入的特征张量x、是否进行多尺度数据增强的标识augment、是否开启分析模式profile和是否可视化输出结果的标识visualize
+    # 如果augment为True，则调用_forward_augment函数进行多尺度数据增强后的推理，并返回结果（它与元素数量与_ground_truth_loss返回的结果不同，因此返回None）；
+    # 否则，调用_forward_once函数进行单尺度推理。在前向传播期间，开启profile选项将输出更多的中间变量以便于调试等目的，visualize选项则允许输出特定样本的可视化图像。
     def forward(self, x, augment=False, profile=False, visualize=False):
         if augment:
             return self._forward_augment(x)  # augmented inference, None
@@ -401,8 +416,17 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             if c2 != no:
                 c2 = make_divisible(c2 * gw, 8)
             args = [c1, *args[1:]]
+        elif m in {CBAM, C3CBAM, C3CA, CoordAtt}:
+            # c1为输入通道，c2为输出通道
+            c1, c2 = ch[f], args[0]
+            if c2 != no:  # 不是最终输出通道数的话
+                c2 = make_divisible(c2 * gw, 8)  # 扩大再变8倍数
+            args = [c1, c2, *args[1:]]
+            if m in {C3CA}:
+                args.insert(2, n)  # 重复的数字，将n插到第二个位置
+                n = 1
         # 需要参数的注意力机制
-        elif m in {DoubleAttention, BAMBlock, CBAMBlock, EffectiveSEModule, GAM_Attention, GlobalContext,
+        elif m in {DoubleAttention, BAMBlock, EffectiveSEModule, GAM_Attention, GlobalContext,
                    GatherExcite, MHSA, MobileViTAttention, ParallelPolarizedSelfAttention, ParNetAttention,
                    S2Attention, SEAttention, SequentialPolarizedSelfAttention, ShuffleAttention, SKAttention}:
             args = [ch[f], *args]
@@ -431,9 +455,9 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='yolov5s.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default='yolov5s-fire.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
-    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     # 是否打印模型速度
     parser.add_argument('--profile', action='store_true', default=True, help='profile model speed')
     # 是否打印每层速度
@@ -449,18 +473,29 @@ if __name__ == '__main__':
     model = Model(opt.cfg).to(device)
 
     # Options
-    if opt.line_profile:  # profile layer by layer
-        model(im, profile=True)
-
-    elif opt.profile:  # profile forward-backward
-        results = profile(input=im, ops=[model], n=3)
-
-    elif opt.test:  # test all models
-        for cfg in Path(ROOT / 'models').rglob('yolo*.yaml'):
-            try:
-                _ = Model(cfg)
-            except Exception as e:
-                print(f'Error in {cfg}: {e}')
-
-    else:  # report fused model summary
-        model.fuse()
+    # 打印模型参数
+    model(im, profile=True)
+    results = profile(input=im, ops=[model], n=3)
+    if not opt.line_profile and not opt.profile:
+        if opt.test:
+            for cfg in Path(ROOT / 'models').rglob('yolo*.yaml'):
+                try:
+                    _ = Model(cfg)
+                except Exception as e:
+                    print(f'Error in {cfg}: {e}')
+        else:  # report fused model summary
+            model.fuse()
+    # if opt.line_profile:  # profile layer by layer
+    #     model(im, profile=True)
+    #
+    # elif opt.profile:  # profile forward-backward
+    #     results = profile(input=im, ops=[model], n=3)
+    #
+    # elif opt.test:  # test all models
+    #     for cfg in Path(ROOT / 'models').rglob('yolo*.yaml'):
+    #         try:
+    #             _ = Model(cfg)
+    #         except Exception as e:
+    #             print(f'Error in {cfg}: {e}')
+    # else:  # report fused model summary
+    #     model.fuse()

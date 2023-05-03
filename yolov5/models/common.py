@@ -51,6 +51,9 @@ class Conv(nn.Module):
         super().__init__()
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
         self.bn = nn.BatchNorm2d(c2)
+        # self.default_act是该类的默认激活函数，已事先设定或铺置；如果act为True，则将激活函数设置为默认值self.default_act；
+        # 如果act是一个nn.Module子类（即继承自nn.Module），则将激活函数设置为act。
+        # 否则，激活函数将被设置为恒等函数nn.Identity()。
         self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
 
     def forward(self, x):
@@ -110,8 +113,10 @@ class TransformerBlock(nn.Module):
 
 class Bottleneck(nn.Module):
     # Standard bottleneck
+    # 输入通道数c1、输出通道数c2、是否添加shortcut连接shortcut、组数g和扩张比例e
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
+        # 在构造函数中，它首先调用父类构造函数初始化模块，并将输入通道数乘以扩张比率缩减后作为隐藏通道数c_
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c_, c2, 3, 1, g=g)

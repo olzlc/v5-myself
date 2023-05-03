@@ -224,6 +224,7 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7
 
     # Get the coordinates of bounding boxes
     if xywh:  # transform from xywh to xyxy
+        # 将两个张量 box1 和 box2 沿着最后一个轴（即轴 -1）进行块状切片操作，每个块的大小为 4
         (x1, y1, w1, h1), (x2, y2, w2, h2) = box1.chunk(4, -1), box2.chunk(4, -1)
         w1_, h1_, w2_, h2_ = w1 / 2, h1 / 2, w2 / 2, h2 / 2
         b1_x1, b1_x2, b1_y1, b1_y2 = x1 - w1_, x1 + w1_, y1 - h1_, y1 + h1_
@@ -231,23 +232,26 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, eps=1e-7
     else:  # x1, y1, x2, y2 = box1
         b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
         b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
+        # .clamp(eps) 表示将张量的每个元素 x 改为 max(x, eps)，即将所有小于 eps 的元素替换成 eps。这句话通常用于确保计算的结果不会出现除以 0 的情况
         w1, h1 = b1_x2 - b1_x1, (b1_y2 - b1_y1).clamp(eps)
         w2, h2 = b2_x2 - b2_x1, (b2_y2 - b2_y1).clamp(eps)
 
-    # Intersection area
+    # 交区域
     inter = (b1_x2.minimum(b2_x2) - b1_x1.maximum(b2_x1)).clamp(0) * \
             (b1_y2.minimum(b2_y2) - b1_y1.maximum(b2_y1)).clamp(0)
 
-    # Union Area
+    # 并区域
     union = w1 * h1 + w2 * h2 - inter + eps
 
     # IoU
     iou = inter / union
     if CIoU or DIoU or GIoU:
+        # 最小外接矩形宽度和高度
         cw = b1_x2.maximum(b2_x2) - b1_x1.minimum(b2_x1)  # convex (smallest enclosing box) width
         ch = b1_y2.maximum(b2_y2) - b1_y1.minimum(b2_y1)  # convex height
         if CIoU or DIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
             c2 = cw ** 2 + ch ** 2 + eps  # convex diagonal squared
+            # 预测框和真实框中点之间相距的距离
             rho2 = ((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4  # center dist ** 2
             if CIoU:  # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
                 v = (4 / math.pi ** 2) * (torch.atan(w2 / h2) - torch.atan(w1 / h1)).pow(2)

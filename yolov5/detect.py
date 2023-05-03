@@ -76,7 +76,7 @@ def run(
         project=ROOT / 'runs/detect',  # 结果保存到的路径
         name='exp',  # 结果保存到的名称
         exist_ok=False,  # 是否允许存在的project/name，不进行递增
-        line_thickness=3,  # 边框厚度（像素）
+        line_thickness=1,  # 边框厚度（像素）
         hide_labels=False,  # 是否隐藏标签
         hide_conf=False,  # 是否隐藏置信度
         half=False,  # 是否使用FP16半精度推断
@@ -317,7 +317,7 @@ def main(option):
     # 调用0，表示有一张显卡
     # run(ROOT / 'yolov5m.pt', ROOT / 'data/images', ROOT / 'data/coco128.yaml', (640, 640), 0.25, 0.45, 1000, '0')
     # 训练后结果
-    run(ROOT / 'weights/after_train_fire/best.pt', ROOT / 'data/images', ROOT / 'data/fire-smoke.yaml', (640, 640), 0.25, 0.45, 1000, '0')
+    run(ROOT / 'test/models/v5_best.pt', ROOT / 'test/images', ROOT / 'data/fire-smoke.yaml', (640, 640), 0.25, 0.45, 1000, '0')
 
 if __name__ == "__main__":
     # print(torch.cuda.is_available())  # true 查看GPU是否可用
